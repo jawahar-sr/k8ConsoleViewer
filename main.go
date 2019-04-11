@@ -53,7 +53,7 @@ func main() {
 
 	logToFile()
 
-	termbox.SetInputMode(termbox.InputEsc)
+	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
 
 	gui := Gui{
 		Group:        group.Name,
@@ -101,7 +101,15 @@ mainEventLoop:
 			case termbox.KeyArrowUp:
 				gui.moveCursorUp()
 			}
-
+		case termbox.EventMouse:
+			switch ev.Key {
+			case termbox.MouseLeft:
+				gui.handleMouseKey(ev.MouseY)
+			case termbox.MouseWheelDown:
+				gui.moveCursorDown()
+			case termbox.MouseWheelUp:
+				gui.moveCursorUp()
+			}
 		case termbox.EventResize:
 			gui.updateWindowSize()
 			updateGuiCh <- struct{}{}
@@ -113,6 +121,10 @@ mainEventLoop:
 }
 
 func readGroups(filepath string) ([]Group, error) {
+	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+		return nil, fmt.Errorf("'%v' does not exist: %v\n", filepath, err)
+	}
+
 	file, err := os.Open(filepath)
 	defer func() {
 		err := file.Close()
@@ -122,13 +134,13 @@ func readGroups(filepath string) ([]Group, error) {
 	}()
 
 	if err != nil {
-		return nil, errors.New("Error opening file " + err.Error())
+		return nil, errors.New("Error opening file: " + err.Error())
 	}
 
 	bytes, err := ioutil.ReadAll(file)
 
 	if err != nil {
-		return nil, errors.New("Error reading file " + err.Error())
+		return nil, errors.New("Error reading file: " + err.Error())
 	}
 
 	groups := make([]Group, 0)

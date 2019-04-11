@@ -1,10 +1,19 @@
 [
   {
     "id": 0,
-    "name": "jenkins",
-    "context": "tools",
+    "name": "dev",
+    "context": "dev",
     "namespaces": [
-      "id-jenkins-slaves"
+      "app1_dev"
+    ]
+  },
+  {
+    "id": 1,
+    "name": "mynamespace",
+    "context": "dev",
+    "namespaces": [
+      "app1_namespace",
+      "app2_namespace"
     ]
   }
 ]
