@@ -59,6 +59,7 @@ func main() {
 		Group:        group.Name,
 		Context:      group.Context,
 		curTopBorder: TOP_AREA_HEIGHT + 1,
+		nsCollapsed:  make(map[string]bool),
 	}
 	gui.updateWindowSize()
 
@@ -100,6 +101,16 @@ mainEventLoop:
 				gui.moveCursorDown()
 			case termbox.KeyArrowUp:
 				gui.moveCursorUp()
+			case termbox.KeyArrowLeft:
+				gui.collapseNamespace()
+			case termbox.KeyArrowRight:
+				gui.expandNamespace()
+			}
+			switch ev.Ch {
+			case 'c':
+				gui.collapseAllNS()
+			case 'e':
+				gui.expandAllNS()
 			}
 		case termbox.EventResize:
 			gui.updateWindowSize()
