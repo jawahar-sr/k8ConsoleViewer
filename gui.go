@@ -43,8 +43,6 @@ type Positions struct {
 
 func (gui *Gui) redrawAll() {
 	clear()
-	//TODO Need to replace loading sign at some point.
-	printLine("Loading info...", 0, 5, termbox.ColorDefault, termbox.ColorDefault)
 	gui.printHeaders()
 	gui.printMainInfo()
 	gui.adjustCursorPosition()
@@ -225,11 +223,6 @@ func (gui *Gui) updateWindowSize() {
 	gui.width = width
 	gui.height = height
 	gui.mutex.Unlock()
-}
-
-func (gui *Gui) handleMouseKey(y int) {
-	gui.moveCursor(0, y)
-	gui.adjustCursorPosition()
 }
 
 func (pod *Pod) readyString() string {

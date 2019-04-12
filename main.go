@@ -53,7 +53,7 @@ func main() {
 
 	logToFile()
 
-	termbox.SetInputMode(termbox.InputEsc | termbox.InputMouse)
+	termbox.SetInputMode(termbox.InputEsc)
 
 	gui := Gui{
 		Group:        group.Name,
@@ -101,22 +101,12 @@ mainEventLoop:
 			case termbox.KeyArrowUp:
 				gui.moveCursorUp()
 			}
-		case termbox.EventMouse:
-			switch ev.Key {
-			case termbox.MouseLeft:
-				gui.handleMouseKey(ev.MouseY)
-			case termbox.MouseWheelDown:
-				gui.moveCursorDown()
-			case termbox.MouseWheelUp:
-				gui.moveCursorUp()
-			}
 		case termbox.EventResize:
 			gui.updateWindowSize()
 			updateGuiCh <- struct{}{}
 		case termbox.EventError:
 			panic(ev.Err)
 		}
-
 	}
 }
 
