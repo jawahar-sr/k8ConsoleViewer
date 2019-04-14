@@ -56,8 +56,8 @@ func main() {
 	termbox.SetInputMode(termbox.InputEsc)
 
 	gui := Gui{
-		Group:        group.Name,
-		Context:      group.Context,
+		group:        group.Name,
+		context:      group.Context,
 		curTopBorder: TopAreaHeight + 1,
 		nameWidth:    NameColStartWidth,
 		statusWidth:  StatusColStartWidth,
@@ -74,8 +74,8 @@ func main() {
 			endTime := time.Now()
 
 			gui.mutex.Lock()
-			gui.Namespaces = namespaceInfos
-			gui.TimeToExecute = endTime.Sub(startTime)
+			gui.namespaces = namespaceInfos
+			gui.timeToExecute = endTime.Sub(startTime)
 			gui.updatePositions()
 			gui.mutex.Unlock()
 
@@ -105,7 +105,7 @@ mainEventLoop:
 			case termbox.KeyArrowUp:
 				gui.moveCursorUp()
 			case termbox.KeyArrowLeft:
-				gui.collapseNamespace()
+				gui.handleLeftArrow()
 			case termbox.KeyArrowRight:
 				gui.expandNamespace()
 			}
