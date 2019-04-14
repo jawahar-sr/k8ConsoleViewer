@@ -228,15 +228,18 @@ func (gui *Gui) printMainInfo() {
 func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 	nsName := gui.positions.namespaces[nsIndex].Name
 	if gui.nsCollapsed[nsName] {
-		printDefaultLine(nsName, 0, yPosition)
-
 		totalSum := 0
 		readySum := 0
 		for k := range gui.positions.namespaces[nsIndex].Pods {
 			totalSum += gui.positions.namespaces[nsIndex].Pods[k].Total
 			readySum += gui.positions.namespaces[nsIndex].Pods[k].Ready
 		}
-		printDefaultLine(fmt.Sprintf("%v/%v", readySum, totalSum), gui.nameWidth, yPosition)
+		fgColor := termbox.ColorDefault
+		if totalSum != readySum {
+			fgColor = termbox.ColorRed
+		}
+		printLine(nsName, 0, yPosition, fgColor, termbox.ColorDefault)
+		printLine(fmt.Sprintf("%v/%v", readySum, totalSum), gui.nameWidth, yPosition, fgColor, termbox.ColorDefault)
 	} else {
 		printDefaultLine(nsName, 0, yPosition)
 	}
