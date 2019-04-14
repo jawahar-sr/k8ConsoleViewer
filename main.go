@@ -58,7 +58,9 @@ func main() {
 	gui := Gui{
 		Group:        group.Name,
 		Context:      group.Context,
-		curTopBorder: TOP_AREA_HEIGHT + 1,
+		curTopBorder: TopAreaHeight + 1,
+		nameWidth:    NameColStartWidth,
+		statusWidth:  StatusColStartWidth,
 		nsCollapsed:  make(map[string]bool),
 	}
 	gui.updateWindowSize()
@@ -74,6 +76,7 @@ func main() {
 			gui.mutex.Lock()
 			gui.Namespaces = namespaceInfos
 			gui.TimeToExecute = endTime.Sub(startTime)
+			gui.updatePositions()
 			gui.mutex.Unlock()
 
 			updateGuiCh <- struct{}{}

@@ -9,13 +9,13 @@ import (
 )
 
 const (
-	NAME_COL_WIDTH     = 57
-	READY_COL_WIDTH    = 7
-	STATUS_COL_WIDTH   = 20
-	RESTARTS_COL_WIDTH = 10
-	STATUS_AREA_HEIGHT = 5
-	INFO_AREA_START    = 5
-	TOP_AREA_HEIGHT    = 4
+	NameColStartWidth   = 20
+	StatusColStartWidth = 8
+	ReadyColWidth       = 7
+	RestartsColWidth    = 10
+	StatusAreaHeight    = 5
+	InfoAreaStart       = 5
+	TopAreaHeight       = 4
 )
 
 type Gui struct {
@@ -30,6 +30,8 @@ type Gui struct {
 	curTopBorder    int
 	curBottomBorder int
 	Positions       Positions
+	nameWidth       int
+	statusWidth     int
 	scrollOffset    int
 	mutex           sync.Mutex
 	nsCollapsed     map[string]bool
@@ -52,20 +54,22 @@ func (gui *Gui) redrawAll() {
 }
 
 func (gui *Gui) collapseNamespace() {
-	index := gui.curY - INFO_AREA_START + gui.scrollOffset
+	index := gui.curY - InfoAreaStart + gui.scrollOffset
 	if gui.Positions.hasNamespace(index) && !gui.nsCollapsed[gui.Positions.namespaces[index].Name] {
 		gui.mutex.Lock()
 		gui.nsCollapsed[gui.Positions.namespaces[index].Name] = true
+		gui.updatePositions()
 		gui.mutex.Unlock()
 		gui.redrawAll()
 	}
 }
 
 func (gui *Gui) expandNamespace() {
-	index := gui.curY - INFO_AREA_START + gui.scrollOffset
+	index := gui.curY - InfoAreaStart + gui.scrollOffset
 	if gui.Positions.hasNamespace(index) && gui.nsCollapsed[gui.Positions.namespaces[index].Name] {
 		gui.mutex.Lock()
 		gui.nsCollapsed[gui.Positions.namespaces[index].Name] = false
+		gui.updatePositions()
 		gui.mutex.Unlock()
 		gui.redrawAll()
 	}
@@ -76,7 +80,9 @@ func (gui *Gui) collapseAllNS() {
 	for _, ns := range gui.Positions.namespaces {
 		gui.nsCollapsed[ns.Name] = true
 	}
+	gui.updatePositions()
 	gui.mutex.Unlock()
+
 	gui.cursorToStartPos()
 	gui.redrawAll()
 }
@@ -86,7 +92,9 @@ func (gui *Gui) expandAllNS() {
 	for _, ns := range gui.Positions.namespaces {
 		gui.nsCollapsed[ns.Name] = false
 	}
+	gui.updatePositions()
 	gui.mutex.Unlock()
+
 	gui.cursorToStartPos()
 	gui.redrawAll()
 }
@@ -142,14 +150,14 @@ func (gui *Gui) printHeaders() {
 	printDefaultLine(fmt.Sprintf("Group: %v", gui.Group), 0, 1)
 	printDefaultLine("NAMESPACE", 0, 3)
 	printDefaultLine("NAME", 3, 4)
-	printDefaultLine("READY", 3+NAME_COL_WIDTH, 4)
-	printDefaultLine("STATUS", 3+NAME_COL_WIDTH+READY_COL_WIDTH, 4)
-	printDefaultLine("RESTARTS", 3+NAME_COL_WIDTH+READY_COL_WIDTH+STATUS_COL_WIDTH, 4)
-	printDefaultLine("AGE", 3+NAME_COL_WIDTH+READY_COL_WIDTH+STATUS_COL_WIDTH+RESTARTS_COL_WIDTH, 4)
+	printDefaultLine("READY", gui.nameWidth, 4)
+	printDefaultLine("STATUS", gui.nameWidth+ReadyColWidth, 4)
+	printDefaultLine("RESTARTS", gui.nameWidth+ReadyColWidth+gui.statusWidth, 4)
+	printDefaultLine("AGE", gui.nameWidth+ReadyColWidth+gui.statusWidth+RestartsColWidth, 4)
 }
 
 func (gui *Gui) printStatusArea() {
-	index := gui.curY - INFO_AREA_START + gui.scrollOffset
+	index := gui.curY - InfoAreaStart + gui.scrollOffset
 	printDefaultLine("Collapse/expand namespace info: Left and Right for individual, 'c' and 'e' for all", 0, gui.height-1)
 	if gui.Positions.hasNamespace(index) {
 		ns := gui.Positions.namespaces[index]
@@ -177,39 +185,15 @@ func (gui *Gui) printStatusArea() {
 }
 
 func (gui *Gui) printMainInfo() {
-	position := 0
-	nsPositions := make(map[int]*Namespace)
-	podPositions := make(map[int]*Pod)
-	errPositions := make(map[int]string)
-	//TODO Need to move position calculation out of screen refresh loop.
-	for nsIndex, ns := range gui.Namespaces {
-		nsPositions[position] = &gui.Namespaces[nsIndex]
-		position++
-		if gui.nsCollapsed[ns.Name] {
-			continue
-		}
-		if ns.Error != nil {
-			errPositions[position] = ns.Error.Error()
-			position++
-		}
-		for podIndex := range gui.Namespaces[nsIndex].Pods {
-			podPositions[position] = &gui.Namespaces[nsIndex].Pods[podIndex]
-			position++
-		}
-	}
-	gui.mutex.Lock()
-	gui.Positions = Positions{namespaces: nsPositions, pods: podPositions, errors: errPositions, lastIndex: position - 1}
-	gui.mutex.Unlock()
-
 	offset := gui.scrollOffset
-	yPosition := INFO_AREA_START
+	yPosition := InfoAreaStart
 	for gui.Positions.hasNamespace(offset) || gui.Positions.hasPod(offset) || gui.Positions.hasError(offset) {
-		if yPosition < gui.height-STATUS_AREA_HEIGHT {
+		if yPosition < gui.height-StatusAreaHeight {
 			if gui.Positions.hasNamespace(offset) {
 				printDefaultLine(gui.Positions.namespaces[offset].Name, 0, yPosition)
 			}
 			if gui.Positions.hasPod(offset) {
-				gui.Positions.pods[offset].printPodInfo(yPosition)
+				gui.Positions.pods[offset].printPodInfo(yPosition, gui.nameWidth, gui.statusWidth)
 			}
 			if gui.Positions.hasError(offset) {
 				printLine(gui.Positions.errors[offset], 3, yPosition, termbox.ColorYellow, termbox.ColorDefault)
@@ -226,7 +210,45 @@ func (gui *Gui) printMainInfo() {
 	gui.mutex.Unlock()
 }
 
-func (p *Pod) printPodInfo(y int) {
+func (gui *Gui) updatePositions() {
+	position := 0
+	nsPositions := make(map[int]*Namespace)
+	podPositions := make(map[int]*Pod)
+	errPositions := make(map[int]string)
+
+	nameWidth := NameColStartWidth
+	statusWidth := StatusColStartWidth
+
+	for nsIndex, ns := range gui.Namespaces {
+		nsPositions[position] = &gui.Namespaces[nsIndex]
+		if len(gui.Namespaces[nsIndex].Name)+2 > nameWidth {
+			nameWidth = len(gui.Namespaces[nsIndex].Name) + 2
+		}
+		position++
+		if gui.nsCollapsed[ns.Name] {
+			continue
+		}
+		if ns.Error != nil {
+			errPositions[position] = ns.Error.Error()
+			position++
+		}
+		for podIndex := range gui.Namespaces[nsIndex].Pods {
+			podPositions[position] = &gui.Namespaces[nsIndex].Pods[podIndex]
+			if len(gui.Namespaces[nsIndex].Pods[podIndex].Name)+5 > nameWidth {
+				nameWidth = len(gui.Namespaces[nsIndex].Pods[podIndex].Name) + 5
+			}
+			if len(gui.Namespaces[nsIndex].Pods[podIndex].Status)+3 > statusWidth {
+				statusWidth = len(gui.Namespaces[nsIndex].Pods[podIndex].Status) + 3
+			}
+			position++
+		}
+	}
+	gui.Positions = Positions{namespaces: nsPositions, pods: podPositions, errors: errPositions, lastIndex: position - 1}
+	gui.nameWidth = nameWidth
+	gui.statusWidth = statusWidth
+}
+
+func (p *Pod) printPodInfo(y int, nameWidth, statusWidth int) {
 	running := p.Status == "Running"
 	fg := termbox.ColorDefault
 	if running && p.Ready >= p.Total {
@@ -238,10 +260,10 @@ func (p *Pod) printPodInfo(y int) {
 	}
 
 	printLine(p.Name, 3, y, fg, termbox.ColorDefault)
-	printLine(p.readyString(), 3+NAME_COL_WIDTH, y, fg, termbox.ColorDefault)
-	printLine(p.Status, 3+NAME_COL_WIDTH+READY_COL_WIDTH, y, fg, termbox.ColorDefault)
-	printLine(p.Restarts, 3+NAME_COL_WIDTH+READY_COL_WIDTH+STATUS_COL_WIDTH, y, fg, termbox.ColorDefault)
-	printLine(p.Age, 3+NAME_COL_WIDTH+READY_COL_WIDTH+STATUS_COL_WIDTH+RESTARTS_COL_WIDTH, y, fg, termbox.ColorDefault)
+	printLine(p.readyString(), nameWidth, y, fg, termbox.ColorDefault)
+	printLine(p.Status, nameWidth+ReadyColWidth, y, fg, termbox.ColorDefault)
+	printLine(p.Restarts, nameWidth+ReadyColWidth+statusWidth, y, fg, termbox.ColorDefault)
+	printLine(p.Age, nameWidth+ReadyColWidth+statusWidth+RestartsColWidth, y, fg, termbox.ColorDefault)
 }
 
 func clearLine(x, y, endx int, fg, bg termbox.Attribute) {
@@ -273,7 +295,7 @@ func (gui *Gui) cursorToStartPos() {
 	gui.mutex.Lock()
 	gui.scrollOffset = 0
 	gui.mutex.Unlock()
-	gui.moveCursor(0, INFO_AREA_START)
+	gui.moveCursor(0, InfoAreaStart)
 }
 
 func (pod *Pod) readyString() string {
@@ -303,7 +325,7 @@ func clear() {
 func clearStatusArea() {
 	width, height := termbox.Size()
 
-	for i := height - STATUS_AREA_HEIGHT; i < height-1; i++ {
+	for i := height - StatusAreaHeight; i < height-1; i++ {
 		clearLine(0, i, width, termbox.ColorDefault, termbox.ColorDefault)
 	}
 
