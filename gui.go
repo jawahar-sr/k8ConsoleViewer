@@ -205,7 +205,7 @@ func (gui *Gui) printMainInfo() {
 	for gui.positions.hasNamespace(offset) || gui.positions.hasPod(offset) || gui.positions.hasError(offset) {
 		if yPosition < gui.height-StatusAreaHeight {
 			if gui.positions.hasNamespace(offset) {
-				printDefaultLine(gui.positions.namespaces[offset].Name, 0, yPosition)
+				gui.printNamespace(offset, yPosition)
 			}
 			if gui.positions.hasPod(offset) {
 				gui.positions.pods[offset].printPodInfo(yPosition, gui.nameWidth, gui.statusWidth)
@@ -223,6 +223,23 @@ func (gui *Gui) printMainInfo() {
 	gui.mutex.Lock()
 	gui.curBottomBorder = yPosition - 1
 	gui.mutex.Unlock()
+}
+
+func (gui *Gui) printNamespace(nsIndex, yPosition int) {
+	nsName := gui.positions.namespaces[nsIndex].Name
+	if gui.nsCollapsed[nsName] {
+		printDefaultLine(nsName, 0, yPosition)
+
+		totalSum := 0
+		readySum := 0
+		for k := range gui.positions.namespaces[nsIndex].Pods {
+			totalSum += gui.positions.namespaces[nsIndex].Pods[k].Total
+			readySum += gui.positions.namespaces[nsIndex].Pods[k].Ready
+		}
+		printDefaultLine(fmt.Sprintf("%v/%v", readySum, totalSum), gui.nameWidth, yPosition)
+	} else {
+		printDefaultLine(nsName, 0, yPosition)
+	}
 }
 
 func (gui *Gui) updatePositions() {
