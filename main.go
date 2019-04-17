@@ -122,8 +122,6 @@ mainEventLoop:
 			panic(ev.Err)
 		}
 	}
-
-	termbox.Close()
 }
 
 func readGroups(filepath string) ([]Group, error) {
