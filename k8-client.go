@@ -4,16 +4,16 @@ import (
 	"flag"
 	"github.com/pkg/errors"
 	"k8s.io/api/core/v1"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
+	"time"
 )
 
 type Namespace struct {
@@ -76,7 +76,7 @@ func getPods(namespace string) Namespace {
 			Total:     len(podItem.Status.ContainerStatuses),
 			Ready:     countReady(podItem),
 			Restarts:  countRestarts(podItem),
-			Age:       "_",
+			Age:       timeToAge(podItem.Status.StartTime.Time, time.Now()),
 			Namespace: &ns,
 		}
 
