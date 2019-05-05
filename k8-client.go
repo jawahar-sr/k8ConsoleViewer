@@ -13,22 +13,16 @@ import (
 	"path/filepath"
 	"sort"
 	"sync"
-	"time"
 )
 
 type Namespace struct {
 	Name  string
-	Pods  []Pod
+	Pods  []PodItem
 	Error error
 }
 
-type Pod struct {
-	Name      string
-	Total     int
-	Ready     int
-	Status    string
-	Restarts  int
-	Age       string
+type PodItem struct {
+	v1.Pod
 	Namespace *Namespace
 }
 
@@ -67,27 +61,17 @@ func getPods(namespace string) Namespace {
 	}
 
 	ns.Name = namespace
-	ns.Pods = make([]Pod, len(pods.Items))
+	ns.Pods = make([]PodItem, len(pods.Items))
 
-	for index, podItem := range pods.Items {
-		pod := Pod{
-			Name:      podItem.Name,
-			Status:    string(podItem.Status.Phase),
-			Total:     len(podItem.Status.ContainerStatuses),
-			Ready:     countReady(podItem),
-			Restarts:  countRestarts(podItem),
-			Age:       timeToAge(podItem.Status.StartTime.Time, time.Now()),
-			Namespace: &ns,
-		}
-
-		ns.Pods[index] = pod
+	for i, p := range pods.Items {
+		ns.Pods[i] = PodItem{p, &ns}
 	}
 	return ns
 }
 
-func countReady(pod v1.Pod) int {
+func (p *PodItem) readyCount() int {
 	count := 0
-	for _, s := range pod.Status.ContainerStatuses {
+	for _, s := range p.Status.ContainerStatuses {
 		if s.Ready {
 			count++
 		}
@@ -95,9 +79,9 @@ func countReady(pod v1.Pod) int {
 	return count
 }
 
-func countRestarts(pod v1.Pod) int {
+func (p *PodItem) restartCount() int {
 	count := 0
-	for _, s := range pod.Status.ContainerStatuses {
+	for _, s := range p.Status.ContainerStatuses {
 		if s.Ready {
 			count += int(s.RestartCount)
 		}

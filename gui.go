@@ -40,7 +40,7 @@ type Gui struct {
 
 type Positions struct {
 	namespaces map[int]*Namespace
-	pods       map[int]*Pod
+	pods       map[int]*PodItem
 	errors     map[int]string
 	lastIndex  int
 }
@@ -231,9 +231,9 @@ func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 	if gui.nsCollapsed[nsName] {
 		totalSum := 0
 		readySum := 0
-		for k := range gui.positions.namespaces[nsIndex].Pods {
-			totalSum += gui.positions.namespaces[nsIndex].Pods[k].Total
-			readySum += gui.positions.namespaces[nsIndex].Pods[k].Ready
+		for i := range gui.positions.namespaces[nsIndex].Pods {
+			totalSum += len(gui.positions.namespaces[nsIndex].Pods[i].Status.ContainerStatuses)
+			readySum += gui.positions.namespaces[nsIndex].Pods[i].readyCount()
 		}
 		fgColor := termbox.ColorDefault
 		if totalSum != readySum {
@@ -249,7 +249,7 @@ func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 func (gui *Gui) updatePositions() {
 	position := 0
 	nsPositions := make(map[int]*Namespace)
-	podPositions := make(map[int]*Pod)
+	podPositions := make(map[int]*PodItem)
 	errPositions := make(map[int]string)
 
 	nameWidth := NameColStartWidth
@@ -273,8 +273,8 @@ func (gui *Gui) updatePositions() {
 			if len(gui.namespaces[nsIndex].Pods[podIndex].Name)+5 > nameWidth {
 				nameWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Name) + 5
 			}
-			if len(gui.namespaces[nsIndex].Pods[podIndex].Status)+3 > statusWidth {
-				statusWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Status) + 3
+			if len(gui.namespaces[nsIndex].Pods[podIndex].Status.Phase)+3 > statusWidth {
+				statusWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Status.Phase) + 3
 			}
 			position++
 		}
@@ -284,12 +284,13 @@ func (gui *Gui) updatePositions() {
 	gui.statusWidth = statusWidth
 }
 
-func (p *Pod) printPodInfo(y int, nameWidth, statusWidth int) {
-	running := p.Status == "Running"
+func (p *PodItem) printPodInfo(y int, nameWidth, statusWidth int) {
+	running := p.Status.Phase == "Running"
 	fg := termbox.ColorDefault
-	if running && p.Ready >= p.Total {
+	total := len(p.Status.ContainerStatuses)
+	if running && p.readyCount() >= total {
 		fg = termbox.ColorGreen
-	} else if running && p.Ready < p.Total {
+	} else if running && p.readyCount() < total {
 		fg = termbox.ColorYellow
 	} else {
 		fg = termbox.ColorRed
@@ -297,9 +298,9 @@ func (p *Pod) printPodInfo(y int, nameWidth, statusWidth int) {
 
 	printLine(p.Name, 3, y, fg, termbox.ColorDefault)
 	printLine(p.readyString(), nameWidth, y, fg, termbox.ColorDefault)
-	printLine(p.Status, nameWidth+ReadyColWidth, y, fg, termbox.ColorDefault)
-	printLine(strconv.Itoa(p.Restarts), nameWidth+ReadyColWidth+statusWidth, y, fg, termbox.ColorDefault)
-	printLine(p.Age, nameWidth+ReadyColWidth+statusWidth+RestartsColWidth, y, fg, termbox.ColorDefault)
+	printLine(string(p.Status.Phase), nameWidth+ReadyColWidth, y, fg, termbox.ColorDefault)
+	printLine(strconv.Itoa(p.restartCount()), nameWidth+ReadyColWidth+statusWidth, y, fg, termbox.ColorDefault)
+	printLine(timeToAge(p.Status.StartTime.Time, time.Now()), nameWidth+ReadyColWidth+statusWidth+RestartsColWidth, y, fg, termbox.ColorDefault)
 }
 
 func clearLine(x, y, endx int, fg, bg termbox.Attribute) {
@@ -334,8 +335,8 @@ func (gui *Gui) cursorToStartPos() {
 	gui.moveCursor(0, InfoAreaStart)
 }
 
-func (pod *Pod) readyString() string {
-	return fmt.Sprintf("%v/%v", pod.Ready, pod.Total)
+func (pod *PodItem) readyString() string {
+	return fmt.Sprintf("%v/%v", pod.readyCount(), len(pod.Status.ContainerStatuses))
 }
 
 func (p *Positions) hasNamespace(index int) bool {
