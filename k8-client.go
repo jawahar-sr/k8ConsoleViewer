@@ -3,28 +3,19 @@ package main
 import (
 	"flag"
 	"github.com/pkg/errors"
-	"k8s.io/api/core/v1"
+	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
 	"sync"
+	"time"
 )
-
-type Namespace struct {
-	Name  string
-	Pods  []PodItem
-	Error error
-}
-
-type PodItem struct {
-	v1.Pod
-	Namespace *Namespace
-}
 
 var k8client *kubernetes.Clientset
 
@@ -61,15 +52,48 @@ func getPods(namespace string) Namespace {
 	}
 
 	ns.Name = namespace
-	ns.Pods = make([]PodItem, len(pods.Items))
+	ns.Pods = make([]Pod, len(pods.Items))
 
 	for i, p := range pods.Items {
-		ns.Pods[i] = PodItem{p, &ns}
+		pod := Pod{
+			Name:      p.Name,
+			Status:    string(p.Status.Phase),
+			Total:     len(p.Status.ContainerStatuses),
+			Ready:     countReady(&pods.Items[i]),
+			Restarts:  countRestarts(&pods.Items[i]),
+			Age:       timeToAge(p.Status.StartTime.Time, time.Now()),
+			Namespace: &ns,
+		}
+
+		containers := make([]Container, len(p.Spec.Containers))
+		for ic, c := range p.Spec.Containers {
+			cont := Container{
+				Name:  c.Name,
+				Image: c.Image,
+				Ready: isReady(&pods.Items[i], c.Name),
+				Pod:   &pod,
+			}
+			containers[ic] = cont
+		}
+		pod.Containers = containers
+		ns.Pods[i] = pod
 	}
 	return ns
 }
 
-func (p *PodItem) readyCount() int {
+func isReady(p *v1.Pod, name string) bool {
+
+	for _, v := range p.Status.ContainerStatuses {
+		if name == v.Name {
+			return v.Ready
+		}
+	}
+
+	log.Println("Container status not found for container:", name)
+	return false
+}
+
+func countReady(p *v1.Pod) int {
 	count := 0
 	for _, s := range p.Status.ContainerStatuses {
 		if s.Ready {
@@ -79,12 +103,10 @@ func (p *PodItem) readyCount() int {
 	return count
 }
 
-func (p *PodItem) restartCount() int {
+func countRestarts(p *v1.Pod) int {
 	count := 0
 	for _, s := range p.Status.ContainerStatuses {
-		if s.Ready {
-			count += int(s.RestartCount)
-		}
+		count += int(s.RestartCount)
 	}
 	return count
 }

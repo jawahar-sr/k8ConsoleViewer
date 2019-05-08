@@ -36,13 +36,39 @@ type Gui struct {
 	scrollOffset    int
 	mutex           sync.Mutex
 	nsCollapsed     map[string]bool
+	podExpanded     map[string]bool
 }
 
 type Positions struct {
 	namespaces map[int]*Namespace
-	pods       map[int]*PodItem
+	pods       map[int]*Pod
+	containers map[int]*Container
 	errors     map[int]string
 	lastIndex  int
+}
+
+type Namespace struct {
+	Name  string
+	Pods  []Pod
+	Error error
+}
+
+type Pod struct {
+	Name       string
+	Ready      int
+	Total      int
+	Status     string
+	Restarts   int
+	Age        string
+	Containers []Container
+	Namespace  *Namespace
+}
+
+type Container struct {
+	Name  string
+	Image string
+	Ready bool
+	Pod   *Pod
 }
 
 func (gui *Gui) redrawAll() {
@@ -56,7 +82,7 @@ func (gui *Gui) redrawAll() {
 
 func (gui *Gui) handleLeftArrow() {
 	index := gui.curY - InfoAreaStart + gui.scrollOffset
-	if gui.positions.hasPod(index) || gui.positions.hasError(index) {
+	if gui.positions.hasPod(index) && !gui.podExpanded[gui.positions.pods[index].Name] || gui.positions.hasError(index) {
 		for !gui.positions.hasNamespace(index) {
 			index--
 		}
@@ -69,6 +95,29 @@ func (gui *Gui) handleLeftArrow() {
 
 	} else if gui.positions.hasNamespace(index) && !gui.nsCollapsed[gui.positions.namespaces[index].Name] {
 		gui.collapseNamespace(index)
+	} else if gui.positions.hasPod(index) && gui.podExpanded[gui.positions.pods[index].Name] {
+		gui.mutex.Lock()
+		gui.podExpanded[gui.positions.pods[index].Name] = false
+		gui.updatePositions()
+		gui.mutex.Unlock()
+		gui.redrawAll()
+	}
+}
+
+func (gui *Gui) handleRightArrow() {
+	index := gui.curY - InfoAreaStart + gui.scrollOffset
+	if gui.positions.hasPod(index) && !gui.podExpanded[gui.positions.pods[index].Name] {
+		gui.mutex.Lock()
+		gui.podExpanded[gui.positions.pods[index].Name] = true
+		gui.updatePositions()
+		gui.mutex.Unlock()
+		gui.redrawAll()
+	} else if gui.positions.hasNamespace(index) && gui.nsCollapsed[gui.positions.namespaces[index].Name] {
+		gui.mutex.Lock()
+		gui.nsCollapsed[gui.positions.namespaces[index].Name] = false
+		gui.updatePositions()
+		gui.mutex.Unlock()
+		gui.redrawAll()
 	}
 }
 
@@ -78,17 +127,6 @@ func (gui *Gui) collapseNamespace(index int) {
 	gui.updatePositions()
 	gui.mutex.Unlock()
 	gui.redrawAll()
-}
-
-func (gui *Gui) expandNamespace() {
-	index := gui.curY - InfoAreaStart + gui.scrollOffset
-	if gui.positions.hasNamespace(index) && gui.nsCollapsed[gui.positions.namespaces[index].Name] {
-		gui.mutex.Lock()
-		gui.nsCollapsed[gui.positions.namespaces[index].Name] = false
-		gui.updatePositions()
-		gui.mutex.Unlock()
-		gui.redrawAll()
-	}
 }
 
 func (gui *Gui) collapseAllNS() {
@@ -113,6 +151,10 @@ func (gui *Gui) expandAllNS() {
 
 	gui.cursorToStartPos()
 	gui.redrawAll()
+}
+
+func (gui *Gui) expandPod() {
+
 }
 
 func (gui *Gui) moveCursorDown() {
@@ -203,13 +245,16 @@ func (gui *Gui) printStatusArea() {
 func (gui *Gui) printMainInfo() {
 	offset := gui.scrollOffset
 	yPosition := InfoAreaStart
-	for gui.positions.hasNamespace(offset) || gui.positions.hasPod(offset) || gui.positions.hasError(offset) {
+	for gui.positions.hasNamespace(offset) || gui.positions.hasPod(offset) || gui.positions.hasContainer(offset) || gui.positions.hasError(offset) {
 		if yPosition < gui.height-StatusAreaHeight {
 			if gui.positions.hasNamespace(offset) {
 				gui.printNamespace(offset, yPosition)
 			}
 			if gui.positions.hasPod(offset) {
 				gui.positions.pods[offset].printPodInfo(yPosition, gui.nameWidth, gui.statusWidth)
+			}
+			if gui.positions.hasContainer(offset) {
+				gui.positions.containers[offset].printContainerInfo(yPosition)
 			}
 			if gui.positions.hasError(offset) {
 				printLine(gui.positions.errors[offset], 3, yPosition, termbox.ColorYellow, termbox.ColorDefault)
@@ -232,8 +277,8 @@ func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 		totalSum := 0
 		readySum := 0
 		for i := range gui.positions.namespaces[nsIndex].Pods {
-			totalSum += len(gui.positions.namespaces[nsIndex].Pods[i].Status.ContainerStatuses)
-			readySum += gui.positions.namespaces[nsIndex].Pods[i].readyCount()
+			totalSum += gui.positions.namespaces[nsIndex].Pods[i].Total
+			readySum += gui.positions.namespaces[nsIndex].Pods[i].Ready
 		}
 		fgColor := termbox.ColorDefault
 		if totalSum != readySum {
@@ -249,7 +294,8 @@ func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 func (gui *Gui) updatePositions() {
 	position := 0
 	nsPositions := make(map[int]*Namespace)
-	podPositions := make(map[int]*PodItem)
+	podPositions := make(map[int]*Pod)
+	contPositions := make(map[int]*Container)
 	errPositions := make(map[int]string)
 
 	nameWidth := NameColStartWidth
@@ -273,34 +319,48 @@ func (gui *Gui) updatePositions() {
 			if len(gui.namespaces[nsIndex].Pods[podIndex].Name)+5 > nameWidth {
 				nameWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Name) + 5
 			}
-			if len(gui.namespaces[nsIndex].Pods[podIndex].Status.Phase)+3 > statusWidth {
-				statusWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Status.Phase) + 3
+			if len(gui.namespaces[nsIndex].Pods[podIndex].Status)+3 > statusWidth {
+				statusWidth = len(gui.namespaces[nsIndex].Pods[podIndex].Status) + 3
 			}
 			position++
+
+			if gui.podExpanded[gui.namespaces[nsIndex].Pods[podIndex].Name] {
+				for contIndex := range gui.namespaces[nsIndex].Pods[podIndex].Containers {
+					contPositions[position] = &gui.namespaces[nsIndex].Pods[podIndex].Containers[contIndex]
+					position++
+				}
+			}
 		}
 	}
-	gui.positions = Positions{namespaces: nsPositions, pods: podPositions, errors: errPositions, lastIndex: position - 1}
+	gui.positions = Positions{namespaces: nsPositions, pods: podPositions, containers: contPositions, errors: errPositions, lastIndex: position - 1}
 	gui.nameWidth = nameWidth
 	gui.statusWidth = statusWidth
 }
 
-func (p *PodItem) printPodInfo(y int, nameWidth, statusWidth int) {
-	running := p.Status.Phase == "Running"
+func (p *Pod) printPodInfo(yPos int, nameWidth, statusWidth int) {
+	running := p.Status == "Running"
 	fg := termbox.ColorDefault
-	total := len(p.Status.ContainerStatuses)
-	if running && p.readyCount() >= total {
+	if running && p.Ready >= p.Total {
 		fg = termbox.ColorGreen
-	} else if running && p.readyCount() < total {
+	} else if running && p.Ready < p.Total {
 		fg = termbox.ColorYellow
 	} else {
 		fg = termbox.ColorRed
 	}
 
-	printLine(p.Name, 3, y, fg, termbox.ColorDefault)
-	printLine(p.readyString(), nameWidth, y, fg, termbox.ColorDefault)
-	printLine(string(p.Status.Phase), nameWidth+ReadyColWidth, y, fg, termbox.ColorDefault)
-	printLine(strconv.Itoa(p.restartCount()), nameWidth+ReadyColWidth+statusWidth, y, fg, termbox.ColorDefault)
-	printLine(timeToAge(p.Status.StartTime.Time, time.Now()), nameWidth+ReadyColWidth+statusWidth+RestartsColWidth, y, fg, termbox.ColorDefault)
+	printLine(p.Name, 3, yPos, fg, termbox.ColorDefault)
+	printLine(p.readyString(), nameWidth, yPos, fg, termbox.ColorDefault)
+	printLine(string(p.Status), nameWidth+ReadyColWidth, yPos, fg, termbox.ColorDefault)
+	printLine(strconv.Itoa(p.Restarts), nameWidth+ReadyColWidth+statusWidth, yPos, fg, termbox.ColorDefault)
+	printLine(p.Age, nameWidth+ReadyColWidth+statusWidth+RestartsColWidth, yPos, fg, termbox.ColorDefault)
+}
+
+func (c *Container) printContainerInfo(yPos int) {
+	if c.Ready {
+		printLine(c.Name, 6, yPos, termbox.ColorGreen, termbox.ColorDefault)
+	} else {
+		printLine(c.Name, 6, yPos, termbox.ColorRed, termbox.ColorDefault)
+	}
 }
 
 func clearLine(x, y, endx int, fg, bg termbox.Attribute) {
@@ -335,8 +395,8 @@ func (gui *Gui) cursorToStartPos() {
 	gui.moveCursor(0, InfoAreaStart)
 }
 
-func (pod *PodItem) readyString() string {
-	return fmt.Sprintf("%v/%v", pod.readyCount(), len(pod.Status.ContainerStatuses))
+func (p *Pod) readyString() string {
+	return fmt.Sprintf("%v/%v", p.Ready, p.Total)
 }
 
 func (p *Positions) hasNamespace(index int) bool {
@@ -345,6 +405,10 @@ func (p *Positions) hasNamespace(index int) bool {
 
 func (p *Positions) hasPod(index int) bool {
 	return p.pods[index] != nil
+}
+
+func (p *Positions) hasContainer(index int) bool {
+	return p.containers[index] != nil
 }
 
 func (p *Positions) hasError(index int) bool {

@@ -67,6 +67,7 @@ func main() {
 		nameWidth:    NameColStartWidth,
 		statusWidth:  StatusColStartWidth,
 		nsCollapsed:  make(map[string]bool),
+		podExpanded:  make(map[string]bool),
 	}
 	gui.updateWindowSize()
 
@@ -112,7 +113,7 @@ mainEventLoop:
 			case termbox.KeyArrowLeft:
 				gui.handleLeftArrow()
 			case termbox.KeyArrowRight:
-				gui.expandNamespace()
+				gui.handleRightArrow()
 			}
 			switch ev.Ch {
 			case 'c':
