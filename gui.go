@@ -105,6 +105,10 @@ func (gui *Gui) handleLeftArrow() {
 }
 
 func (gui *Gui) handleRightArrow() {
+	// TODO When ns is empty, show some message
+	// TODO when already expanded, move one step lower (make sure when expanding on bottom border is handled correctly)
+	// TODO expand container to show image, status and mb some other data
+
 	index := gui.curY - InfoAreaStart + gui.scrollOffset
 	if gui.positions.hasPod(index) && !gui.podExpanded[gui.positions.pods[index].Name] {
 		gui.mutex.Lock()
@@ -236,6 +240,15 @@ func (gui *Gui) printStatusArea() {
 
 		clearStatusArea()
 		printDefaultLine(podLog, 0, gui.height-4)
+		printDefaultLine(exec, 0, gui.height-3)
+	} else if gui.positions.hasContainer(index) {
+		cont := gui.positions.containers[index]
+
+		contLog := fmt.Sprintf("kubectl --context %v -n %v logs %v --container %v", gui.context, cont.Pod.Namespace.Name, cont.Pod.Name, cont.Name)
+		exec := fmt.Sprintf("kubectl --context %v -n %v exec -it %v --container %v /bin/sh", gui.context, cont.Pod.Namespace.Name, cont.Pod.Name, cont.Name)
+
+		clearStatusArea()
+		printDefaultLine(contLog, 0, gui.height-4)
 		printDefaultLine(exec, 0, gui.height-3)
 	} else {
 		clearStatusArea()

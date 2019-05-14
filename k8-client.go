@@ -2,13 +2,16 @@ package main
 
 import (
 	"flag"
+	"fmt"
 	"github.com/pkg/errors"
 	v1 "k8s.io/api/core/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
+	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/client-go/kubernetes"
 	_ "k8s.io/client-go/plugin/pkg/client/auth/oidc"
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
+	"k8s.io/kubernetes/pkg/util/node"
 	"log"
 	"os"
 	"path/filepath"
@@ -57,11 +60,11 @@ func getPods(namespace string) Namespace {
 	for i, p := range pods.Items {
 		pod := Pod{
 			Name:      p.Name,
-			Status:    string(p.Status.Phase),
+			Status:    getStatus(&pods.Items[i]),
 			Total:     len(p.Status.ContainerStatuses),
 			Ready:     countReady(&pods.Items[i]),
 			Restarts:  countRestarts(&pods.Items[i]),
-			Age:       timeToAge(p.Status.StartTime.Time, time.Now()),
+			Age:       translateTimeSince(&p.CreationTimestamp),
 			Namespace: &ns,
 		}
 
@@ -82,7 +85,6 @@ func getPods(namespace string) Namespace {
 }
 
 func isReady(p *v1.Pod, name string) bool {
-
 	for _, v := range p.Status.ContainerStatuses {
 		if name == v.Name {
 			return v.Ready
@@ -152,4 +154,82 @@ func buildConfigFromFlags(context, kubeconfigPath string) (*rest.Config, error) 
 		&clientcmd.ConfigOverrides{
 			CurrentContext: context,
 		}).ClientConfig()
+}
+
+// Translate time to human readable duration using k8s package.
+func translateTimeSince(t *metav1.Time) string {
+	if t == nil || t.IsZero() {
+		return "<unknown>"
+	}
+	return duration.ShortHumanDuration(time.Since(t.Time))
+}
+
+// This logic is pretty much a copy of https://github.com/kubernetes/kubernetes/tree/master/pkg/printers/internalversion/printers.go
+// printPod() function
+func getStatus(pod *v1.Pod) string {
+	reason := string(pod.Status.Phase)
+	if pod.Status.Reason != "" {
+		reason = pod.Status.Reason
+	}
+
+	initializing := false
+	for i := range pod.Status.InitContainerStatuses {
+		container := pod.Status.InitContainerStatuses[i]
+		switch {
+		case container.State.Terminated != nil && container.State.Terminated.ExitCode == 0:
+			continue
+		case container.State.Terminated != nil:
+			// initialization is failed
+			if len(container.State.Terminated.Reason) == 0 {
+				if container.State.Terminated.Signal != 0 {
+					reason = fmt.Sprintf("Init:Signal:%d", container.State.Terminated.Signal)
+				} else {
+					reason = fmt.Sprintf("Init:ExitCode:%d", container.State.Terminated.ExitCode)
+				}
+			} else {
+				reason = "Init:" + container.State.Terminated.Reason
+			}
+			initializing = true
+		case container.State.Waiting != nil && len(container.State.Waiting.Reason) > 0 && container.State.Waiting.Reason != "PodInitializing":
+			reason = "Init:" + container.State.Waiting.Reason
+			initializing = true
+		default:
+			reason = fmt.Sprintf("Init:%d/%d", i, len(pod.Spec.InitContainers))
+			initializing = true
+		}
+		break
+	}
+	if !initializing {
+		hasRunning := false
+		for i := len(pod.Status.ContainerStatuses) - 1; i >= 0; i-- {
+			container := pod.Status.ContainerStatuses[i]
+
+			if container.State.Waiting != nil && container.State.Waiting.Reason != "" {
+				reason = container.State.Waiting.Reason
+			} else if container.State.Terminated != nil && container.State.Terminated.Reason != "" {
+				reason = container.State.Terminated.Reason
+			} else if container.State.Terminated != nil && container.State.Terminated.Reason == "" {
+				if container.State.Terminated.Signal != 0 {
+					reason = fmt.Sprintf("Signal:%d", container.State.Terminated.Signal)
+				} else {
+					reason = fmt.Sprintf("ExitCode:%d", container.State.Terminated.ExitCode)
+				}
+			} else if container.Ready && container.State.Running != nil {
+				hasRunning = true
+			}
+		}
+
+		// change pod status back to "Running" if there is at least one container still reporting as "Running" status
+		if reason == "Completed" && hasRunning {
+			reason = "Running"
+		}
+	}
+
+	if pod.DeletionTimestamp != nil && pod.Status.Reason == node.NodeUnreachablePodReason {
+		reason = "Unknown"
+	} else if pod.DeletionTimestamp != nil {
+		reason = "Terminating"
+	}
+
+	return reason
 }
