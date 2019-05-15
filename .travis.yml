@@ -3,7 +3,7 @@ go:
 - 1.11.x
 script:
   - go test -v ./...
-  - GOOS=darwin GOARCH=amd64 go build .
+  - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" .
 deploy:
   provider: releases
   api_key:

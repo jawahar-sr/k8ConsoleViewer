@@ -84,6 +84,7 @@ func (gui *Gui) redrawAll() {
 
 func (gui *Gui) handleLeftArrow() {
 	index := gui.curY - InfoAreaStart + gui.scrollOffset
+	// When pod is collapsed or on error line, move to namespace line
 	if gui.positions.hasPod(index) && !gui.podExpanded[gui.positions.pods[index].Name] || gui.positions.hasError(index) {
 		for !gui.positions.hasNamespace(index) {
 			index--
@@ -94,7 +95,16 @@ func (gui *Gui) handleLeftArrow() {
 		}
 
 		gui.moveCursor(0, index+InfoAreaStart-gui.scrollOffset)
-
+		// When on container or message line then move to pod line
+	} else if gui.positions.hasContainer(index) || gui.positions.hasMessage(index) {
+		for !gui.positions.hasPod(index) {
+			index--
+		}
+		if index < gui.scrollOffset {
+			gui.scrollOffset = index
+			gui.redrawAll()
+		}
+		gui.moveCursor(0, index+InfoAreaStart-gui.scrollOffset)
 	} else if gui.positions.hasNamespace(index) && !gui.nsCollapsed[gui.positions.namespaces[index].Name] {
 		gui.collapseNamespace(index)
 	} else if gui.positions.hasPod(index) && gui.podExpanded[gui.positions.pods[index].Name] {
@@ -310,6 +320,7 @@ func (gui *Gui) updatePositions() {
 	position := 0
 
 	// TODO may be there is a better way of doing this for example map[int]Position{Type, interface{}} ?
+	// TODO can stop after reaching screen border
 	nsPositions := make(map[int]*Namespace)
 	podPositions := make(map[int]*Pod)
 	contPositions := make(map[int]*Container)
