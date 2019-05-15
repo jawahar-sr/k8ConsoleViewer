@@ -12,7 +12,6 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/kubernetes/pkg/util/node"
-	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -69,30 +68,28 @@ func getPods(namespace string) Namespace {
 		}
 
 		containers := make([]Container, len(p.Spec.Containers))
-		for ic, c := range p.Spec.Containers {
-			cont := Container{
-				Name:  c.Name,
-				Image: c.Image,
-				Ready: isReady(&pods.Items[i], c.Name),
-				Pod:   &pod,
+		for i, cs := range p.Status.ContainerStatuses {
+
+			msg := ""
+			if cs.State.Waiting != nil && cs.State.Waiting.Reason != "" {
+				msg = cs.State.Waiting.Message
+			} else if cs.State.Terminated != nil && cs.State.Terminated.Reason != "" {
+				msg = cs.State.Terminated.Message
 			}
-			containers[ic] = cont
+
+			cont := Container{
+				Name:    cs.Name,
+				Image:   cs.Image,
+				Ready:   cs.Ready,
+				Message: msg,
+				Pod:     &pod,
+			}
+			containers[i] = cont
 		}
 		pod.Containers = containers
 		ns.Pods[i] = pod
 	}
 	return ns
-}
-
-func isReady(p *v1.Pod, name string) bool {
-	for _, v := range p.Status.ContainerStatuses {
-		if name == v.Name {
-			return v.Ready
-		}
-	}
-
-	log.Println("Container status not found for container:", name)
-	return false
 }
 
 func countReady(p *v1.Pod) int {

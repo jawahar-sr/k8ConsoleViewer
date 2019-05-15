@@ -44,6 +44,7 @@ type Positions struct {
 	pods       map[int]*Pod
 	containers map[int]*Container
 	errors     map[int]string
+	message    map[int]string
 	lastIndex  int
 }
 
@@ -65,10 +66,11 @@ type Pod struct {
 }
 
 type Container struct {
-	Name  string
-	Image string
-	Ready bool
-	Pod   *Pod
+	Name    string
+	Image   string
+	Message string
+	Ready   bool
+	Pod     *Pod
 }
 
 func (gui *Gui) redrawAll() {
@@ -105,10 +107,7 @@ func (gui *Gui) handleLeftArrow() {
 }
 
 func (gui *Gui) handleRightArrow() {
-	// TODO When ns is empty, show some message
 	// TODO when already expanded, move one step lower (make sure when expanding on bottom border is handled correctly)
-	// TODO expand container to show image, status and mb some other data
-
 	index := gui.curY - InfoAreaStart + gui.scrollOffset
 	if gui.positions.hasPod(index) && !gui.podExpanded[gui.positions.pods[index].Name] {
 		gui.mutex.Lock()
@@ -258,7 +257,7 @@ func (gui *Gui) printStatusArea() {
 func (gui *Gui) printMainInfo() {
 	offset := gui.scrollOffset
 	yPosition := InfoAreaStart
-	for gui.positions.hasNamespace(offset) || gui.positions.hasPod(offset) || gui.positions.hasContainer(offset) || gui.positions.hasError(offset) {
+	for gui.positions.hasNamespace(offset) || gui.positions.hasPod(offset) || gui.positions.hasContainer(offset) || gui.positions.hasMessage(offset) || gui.positions.hasError(offset) {
 		if yPosition < gui.height-StatusAreaHeight {
 			if gui.positions.hasNamespace(offset) {
 				gui.printNamespace(offset, yPosition)
@@ -268,6 +267,9 @@ func (gui *Gui) printMainInfo() {
 			}
 			if gui.positions.hasContainer(offset) {
 				gui.positions.containers[offset].printContainerInfo(yPosition)
+			}
+			if gui.positions.hasMessage(offset) {
+				printLine(gui.positions.message[offset], 9, yPosition, termbox.ColorYellow, termbox.ColorDefault)
 			}
 			if gui.positions.hasError(offset) {
 				printLine(gui.positions.errors[offset], 3, yPosition, termbox.ColorYellow, termbox.ColorDefault)
@@ -306,9 +308,12 @@ func (gui *Gui) printNamespace(nsIndex, yPosition int) {
 
 func (gui *Gui) updatePositions() {
 	position := 0
+
+	// TODO may be there is a better way of doing this for example map[int]Position{Type, interface{}} ?
 	nsPositions := make(map[int]*Namespace)
 	podPositions := make(map[int]*Pod)
 	contPositions := make(map[int]*Container)
+	msgPositions := make(map[int]string)
 	errPositions := make(map[int]string)
 
 	nameWidth := NameColStartWidth
@@ -323,10 +328,15 @@ func (gui *Gui) updatePositions() {
 		if gui.nsCollapsed[ns.Name] {
 			continue
 		}
+		if len(gui.namespaces[nsIndex].Pods) == 0 {
+			errPositions[position] = "No resources found."
+			position++
+		}
 		if ns.Error != nil {
 			errPositions[position] = ns.Error.Error()
 			position++
 		}
+
 		for podIndex := range gui.namespaces[nsIndex].Pods {
 			podPositions[position] = &gui.namespaces[nsIndex].Pods[podIndex]
 			if len(gui.namespaces[nsIndex].Pods[podIndex].Name)+5 > nameWidth {
@@ -341,11 +351,15 @@ func (gui *Gui) updatePositions() {
 				for contIndex := range gui.namespaces[nsIndex].Pods[podIndex].Containers {
 					contPositions[position] = &gui.namespaces[nsIndex].Pods[podIndex].Containers[contIndex]
 					position++
+					if gui.namespaces[nsIndex].Pods[podIndex].Containers[contIndex].Message != "" {
+						msgPositions[position] = gui.namespaces[nsIndex].Pods[podIndex].Containers[contIndex].Message
+						position++
+					}
 				}
 			}
 		}
 	}
-	gui.positions = Positions{namespaces: nsPositions, pods: podPositions, containers: contPositions, errors: errPositions, lastIndex: position - 1}
+	gui.positions = Positions{namespaces: nsPositions, pods: podPositions, containers: contPositions, message: msgPositions, errors: errPositions, lastIndex: position - 1}
 	gui.nameWidth = nameWidth
 	gui.statusWidth = statusWidth
 }
@@ -370,9 +384,9 @@ func (p *Pod) printPodInfo(yPos int, nameWidth, statusWidth int) {
 
 func (c *Container) printContainerInfo(yPos int) {
 	if c.Ready {
-		printLine(c.Name, 6, yPos, termbox.ColorGreen, termbox.ColorDefault)
+		printLine(c.Image, 6, yPos, termbox.ColorGreen, termbox.ColorDefault)
 	} else {
-		printLine(c.Name, 6, yPos, termbox.ColorRed, termbox.ColorDefault)
+		printLine(c.Image, 6, yPos, termbox.ColorRed, termbox.ColorDefault)
 	}
 }
 
@@ -422,6 +436,11 @@ func (p *Positions) hasPod(index int) bool {
 
 func (p *Positions) hasContainer(index int) bool {
 	return p.containers[index] != nil
+}
+
+func (p *Positions) hasMessage(index int) bool {
+	_, ok := p.message[index]
+	return ok
 }
 
 func (p *Positions) hasError(index int) bool {
