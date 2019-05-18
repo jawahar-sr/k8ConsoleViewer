@@ -26,3 +26,9 @@ How to use:
 ```
 - Run `./k8ConsoleViewer <id>` or `./k8ConsoleViewer <name>` based on the groups.json (Initial launch might be a bit slow due to kubectl response times)
 - Run `./k8ConsoleViewer` to view available groups 
+
+Symlink to /url/local/bin to launch it from anywhere 
+```
+ln -s <path to the app executable> /usr/local/bin/<prefered name>
+``` 
+for example `ln -s ~/Tools/k8ConsoleViewer/k8ConsoleViewer /usr/local/bin/k8viewer`

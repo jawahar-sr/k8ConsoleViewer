@@ -8,6 +8,7 @@ import (
 	"io/ioutil"
 	"log"
 	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"time"
@@ -21,7 +22,15 @@ type Group struct {
 }
 
 func main() {
-	groups, err := readGroups("groups.json")
+	s, err := os.Executable()
+	if err != nil {
+		log.Fatal(err)
+	}
+	symlink, err := filepath.EvalSymlinks(s)
+	if err != nil {
+		log.Fatal(err)
+	}
+	groups, err := readGroups(filepath.Dir(symlink) + "/groups.json")
 
 	if err != nil {
 		log.Fatal(err)
@@ -131,7 +140,8 @@ mainEventLoop:
 }
 
 func readGroups(filepath string) ([]Group, error) {
-	if _, err := os.Stat(filepath); os.IsNotExist(err) {
+	_, err := os.Stat(filepath)
+	if err != nil {
 		return nil, fmt.Errorf("'%v' does not exist: %v\n", filepath, err)
 	}
 

@@ -54,9 +54,12 @@ func getPods(namespace string) Namespace {
 	}
 
 	ns.Name = namespace
-	ns.Pods = make([]Pod, len(pods.Items))
+	ns.Pods = make([]Pod, 0)
 
 	for i, p := range pods.Items {
+		if p.Status.Phase == "Succeeded" {
+			continue
+		}
 		pod := Pod{
 			Name:      p.Name,
 			Status:    getStatus(&pods.Items[i]),
@@ -87,7 +90,7 @@ func getPods(namespace string) Namespace {
 			containers[i] = cont
 		}
 		pod.Containers = containers
-		ns.Pods[i] = pod
+		ns.Pods = append(ns.Pods, pod)
 	}
 	return ns
 }
