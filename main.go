@@ -27,16 +27,12 @@ type NsGroup struct {
 }
 
 func main() {
-	s, err := os.Executable()
+	appDir, err := getAppDir()
 	if err != nil {
 		log.Fatal(err)
 	}
-	symlink, err := filepath.EvalSymlinks(s)
-	if err != nil {
-		log.Fatal(err)
-	}
-	groups, err := readGroups(filepath.Dir(symlink) + "/groups.json")
 
+	groups, err := readGroups(appDir + "/groups.json")
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -76,7 +72,7 @@ func main() {
 		termbox.Close()
 	}()
 
-	logToFile()
+	//logToFile(appDir)
 
 	termbox.SetInputMode(termbox.InputEsc)
 
@@ -215,11 +211,24 @@ func getGroup(param string, groups []Group) (*Group, error) {
 	return nil, fmt.Errorf("ID '%v' not found", id)
 }
 
-func logToFile() {
-	file, err := os.OpenFile("log.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+func logToFile(appDir string) {
+	file, err := os.OpenFile(appDir+"/log.log", os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal("err")
 	}
 
 	log.SetOutput(file)
+}
+
+func getAppDir() (string, error) {
+	s, err := os.Executable()
+	if err != nil {
+		return "", err
+	}
+	symlink, err := filepath.EvalSymlinks(s)
+	if err != nil {
+		return "", err
+	}
+
+	return filepath.Dir(symlink), nil
 }
