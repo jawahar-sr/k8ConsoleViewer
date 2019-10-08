@@ -1,9 +1,12 @@
 language: go
 go:
-- 1.11.x
+- 1.13.x
 script:
   - go test -v ./...
-  - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w" .
+  - export buildNumber=$(git describe --tags)
+  - export buildTime=$(date)
+  - echo "Building with version $buildNumber / $buildTime"
+  - GOOS=darwin GOARCH=amd64 go build -ldflags="-s -w -X 'github.com/JLevconoks/k8ConsoleViewer/version.BuildTime=$buildTime' -X 'github.com/JLevconoks/k8ConsoleViewer/version.BuildVersion=$buildNumber'" .
 deploy:
   provider: releases
   api_key:
