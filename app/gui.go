@@ -29,9 +29,8 @@ type Gui struct {
 	execLabel   StringItem
 	execTime    StringItem
 	groupName   StringItem
-	mainFrame   InfoFrame
-	footerFrame FooterFrame
-	statusBar   StringItem
+	mainFrame   *InfoFrame
+	footerFrame *FooterFrame
 	statusBarCh chan string
 }
 
@@ -137,7 +136,6 @@ func (gui *Gui) handleEndKey() {
 
 func (gui *Gui) handleRune(r rune) {
 	if len(gui.mainFrame.positions) == 0 {
-		//Special case triggered by resize event being sent on app load and before positions were calculated for namespaces
 		return
 	}
 	position := gui.mainFrame.cursorY + gui.mainFrame.scrollYOffset
@@ -171,6 +169,8 @@ func (gui *Gui) handleRune(r rune) {
 			value = fmt.Sprintf("kubectl --context %v -n %v describe pod %v", pod.namespace.context, pod.namespace.name, pod.name)
 		case '4':
 			value = fmt.Sprintf("kubectl --context %v -n %v delete pod %v", pod.namespace.context, pod.namespace.name, pod.name)
+		case '5':
+			value = fmt.Sprintf("kubectl --context %v -n %v scale deployment %v --replicas=", pod.namespace.context, pod.namespace.name, pod.deploymentName)
 		}
 	case TypeContainer:
 		cont := item.(*Container)

@@ -52,16 +52,17 @@ func (n *Namespace) DisplayName() string {
 }
 
 type Pod struct {
-	name         string
-	ready        int
-	total        int
-	status       string
-	restarts     int
-	age          string
-	creationTime time.Time
-	containers   []Container
-	isExpanded   bool
-	namespace    *Namespace
+	name           string
+	deploymentName string
+	ready          int
+	total          int
+	status         string
+	restarts       int
+	age            string
+	creationTime   time.Time
+	containers     []Container
+	isExpanded     bool
+	namespace      *Namespace
 }
 
 func (p *Pod) Type() Type {
@@ -210,6 +211,7 @@ func toPod(p v1.Pod, parent *Namespace) Pod {
 	pod.restarts = restarts
 	pod.creationTime = creationTime
 	pod.age = translateTimestampSince(creationTime)
+	pod.deploymentName = p.Labels["deployment"]
 
 	containers := make([]Container, 0)
 	for _, c := range p.Status.ContainerStatuses {
