@@ -6,6 +6,7 @@ import (
 	v1 "k8s.io/api/core/v1"
 	"k8s.io/apimachinery/pkg/util/duration"
 	"k8s.io/kubernetes/pkg/util/node"
+	"sort"
 	"strings"
 	"time"
 )
@@ -13,7 +14,8 @@ import (
 type Type int
 
 const (
-	TypeNamespace Type = iota
+	TypeNamespace Type = iota + 1
+	TypePodGroup
 	TypePod
 	TypeContainer
 	TypeNamespaceError
@@ -27,12 +29,12 @@ type Item interface {
 }
 
 type Namespace struct {
-	name       string
-	context    string
-	pods       []Pod
-	nsError    NamespaceError
-	nsMessage  NamespaceMessage
-	isExpanded bool
+	name        string
+	context     string
+	deployments []*PodGroup
+	nsError     NamespaceError
+	nsMessage   NamespaceMessage
+	isExpanded  bool
 }
 
 func (n *Namespace) Type() Type {
@@ -51,18 +53,55 @@ func (n *Namespace) DisplayName() string {
 	return fmt.Sprintf("%v / %v", n.name, n.context)
 }
 
+type PodGroup struct {
+	name       string
+	pods       []Pod
+	isExpanded bool
+	namespace  *Namespace
+}
+
+func (pg *PodGroup) Type() Type {
+	return TypePodGroup
+}
+
+func (pg *PodGroup) Expanded(b bool) {
+	pg.isExpanded = b
+}
+
+func (pg *PodGroup) IsExpanded() bool {
+	return pg.isExpanded
+}
+
+func (pg *PodGroup) countReadyPods() (ready int) {
+	ready = 0
+
+	for pIndex := range pg.pods {
+		if pg.pods[pIndex].ready == pg.pods[pIndex].total {
+			ready++
+		}
+	}
+	return ready
+}
+
+func (pg *PodGroup) podNames() []string {
+	names := make([]string, 0)
+	for index := range pg.pods {
+		names = append(names, pg.pods[index].name)
+	}
+	return names
+}
+
 type Pod struct {
-	name           string
-	deploymentName string
-	ready          int
-	total          int
-	status         string
-	restarts       int
-	age            string
-	creationTime   time.Time
-	containers     []Container
-	isExpanded     bool
-	namespace      *Namespace
+	name         string
+	ready        int
+	total        int
+	status       string
+	restarts     int
+	age          string
+	creationTime time.Time
+	containers   []Container
+	isExpanded   bool
+	podGroup     *PodGroup
 }
 
 func (p *Pod) Type() Type {
@@ -79,6 +118,16 @@ func (p *Pod) IsExpanded() bool {
 
 func (p *Pod) ReadyString() string {
 	return fmt.Sprintf("%d/%d", p.ready, p.total)
+}
+
+func (p *Pod) containerNames() []string {
+	names := make([]string, 0)
+
+	for index := range p.containers {
+		names = append(names, p.containers[index].name)
+	}
+
+	return names
 }
 
 type Container struct {
@@ -191,17 +240,56 @@ func toNamespace(plr *PodListResult) Namespace {
 		}
 	}
 
-	pods := make([]Pod, 0)
-	for _, p := range plr.Items {
-		pods = append(pods, toPod(p, &ns))
-	}
-
-	ns.pods = pods
+	ns.deployments = toPodGroup(plr.Items, &ns)
 	return ns
 }
 
-func toPod(p v1.Pod, parent *Namespace) Pod {
-	pod := Pod{name: p.Name, namespace: parent}
+func toPodGroup(pods []v1.Pod, parent *Namespace) []*PodGroup {
+	podGroup := make(map[string]*PodGroup)
+
+	for _, pod := range pods {
+		podGroupName := "_"
+
+		switch {
+		case pod.Labels["deployment"] != "":
+			podGroupName = pod.Labels["deployment"]
+		case pod.Labels["statefulSet"] != "":
+			podGroupName = pod.Labels["statefulSet"]
+		case pod.Labels["job-name"] != "":
+			podGroupName = pod.Labels["job-name"]
+		}
+
+		d, ok := podGroup[podGroupName]
+		if !ok {
+			d = &PodGroup{
+				name:       podGroupName,
+				pods:       make([]Pod, 0),
+				isExpanded: false,
+				namespace:  parent,
+			}
+		}
+
+		d.pods = append(d.pods, toPod(pod, d))
+		podGroup[podGroupName] = d
+	}
+
+	podGroups := make([]*PodGroup, len(podGroup))
+
+	index := 0
+	for _, d := range podGroup {
+		podGroups[index] = d
+		index++
+	}
+
+	sort.Slice(podGroups, func(i, j int) bool {
+		return podGroups[i].name < podGroups[j].name
+	})
+
+	return podGroups
+}
+
+func toPod(p v1.Pod, parent *PodGroup) Pod {
+	pod := Pod{name: p.Name, podGroup: parent}
 
 	status, ready, total, restarts, creationTime := podStats(&p)
 
@@ -211,7 +299,6 @@ func toPod(p v1.Pod, parent *Namespace) Pod {
 	pod.restarts = restarts
 	pod.creationTime = creationTime
 	pod.age = translateTimestampSince(creationTime)
-	pod.deploymentName = p.Labels["deployment"]
 
 	containers := make([]Container, 0)
 	for _, c := range p.Status.ContainerStatuses {
