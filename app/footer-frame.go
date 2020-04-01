@@ -45,8 +45,8 @@ func (ff *FooterFrame) updateShortcutInfo(s tcell.Screen, i Item) {
 		ff.lines[1] = "1 = get all       3 = get events   5 = get secrets"
 		ff.lines[2] = "2 = get ingress   4 = describe     6 = get config map"
 	case TypePodGroup:
-		ff.lines[1] = "1 = describe   3 = scale   Ctrl+E = exec to all     Ctrl+K = follow logs from all"
-		ff.lines[2] = "2 = delete                 Ctrl+L = logs from all"
+		ff.lines[1] = "1 = describe      3 = scale   Ctrl+E = exec to all     Ctrl+K = follow logs from all"
+		ff.lines[2] = "2 = delete deploy             Ctrl+L = logs from all"
 	case TypePod:
 		ff.lines[1] = "1 = get logs   3 = describe     5 = scale   Ctrl+E = exec to all     Ctrl+K = follow logs from all"
 		ff.lines[2] = "2 = exec       4 = delete pod               Ctrl+L = logs from all"

@@ -228,7 +228,7 @@ func (gui *Gui) handleRune(r rune) {
 		case '1':
 			value = fmt.Sprintf("kubectl --context %v -n %v describe deployment %v", context, nsName, pg.name)
 		case '2':
-			value = fmt.Sprintf("kubectl --context %v -n %v delete pod %v", context, nsName, pg.name)
+			value = fmt.Sprintf("kubectl --context %v -n %v delete deployment %v", context, nsName, pg.name)
 		case '3':
 			value = fmt.Sprintf("kubectl --context %v -n %v scale deployment %v --replicas=", context, nsName, pg.name)
 		}
