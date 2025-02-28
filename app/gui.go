@@ -182,7 +182,7 @@ func (gui *Gui) handleEnterKey() {
 }
 
 func (gui *Gui) execToPods() {
-	cmdTemplate := "kubectl --context %v -n %v exec -it %v -c %v /bin/bash"
+	cmdTemplate := "kubectl --context %v -n %v exec -it %v -c %v -- /bin/bash"
 	gui.handleCommandExec(cmdTemplate)
 }
 
@@ -240,7 +240,7 @@ func (gui *Gui) handleRune(r rune) {
 		case '1':
 			value = fmt.Sprintf("kubectl --context %v -n %v logs %v", context, nsName, pod.name)
 		case '2':
-			value = fmt.Sprintf("kubectl --context %v -n %v exec -it %v /bin/bash", context, nsName, pod.name)
+			value = fmt.Sprintf("kubectl --context %v -n %v exec -it %v -- /bin/bash", context, nsName, pod.name)
 		case '3':
 			value = fmt.Sprintf("kubectl --context %v -n %v describe pod %v", context, nsName, pod.name)
 		case '4':
@@ -256,7 +256,7 @@ func (gui *Gui) handleRune(r rune) {
 		case '1':
 			value = fmt.Sprintf("kubectl --context %v -n %v logs %v -c %v", context, nsName, cont.pod.name, cont.name)
 		case '2':
-			value = fmt.Sprintf("kubectl --context %v -n %v exec -it %v -c %v /bin/bash", context, nsName, cont.pod.name, cont.name)
+			value = fmt.Sprintf("kubectl --context %v -n %v exec -it %v -c %v -- /bin/bash", context, nsName, cont.pod.name, cont.name)
 		}
 	}
 
